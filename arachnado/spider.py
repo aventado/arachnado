@@ -425,6 +425,70 @@ class RedisWideOnionCrawlSpider4(RedisWideOnionCrawlSpider):
     name = 'widequeue4'
 
 
+from six.moves.urllib.parse import urljoin, urlparse
+
+
+class VespinSpider(ArachnadoSpider):
+    """
+    Experimental spiders
+    """
+    name = 'vespin'
+
+    def __init__(self, *args, **kwargs):
+        super(VespinSpider, self).__init__(*args, **kwargs)
+
+    def start_requests(self):
+        self.logger.info("Started job %s (mongo id=%s) for domain %s",
+                         self.crawl_id, self.motor_job_id, self.domain)
+        for url in self.start_urls:
+            self.start_url = add_scheme_if_missing(url)
+            yield scrapy.Request(url, self.parse_list)
+
+    def fix_url(self, url, base_url):
+        return urljoin(base_url, url)
+        # return url.replace("./", base_url)
+        # return url
+
+    def get_urls(self, sel, xpath, base_url):
+        urls = sel.xpath(xpath).extract()
+        return [self.fix_url(x, base_url) for x in urls]
+
+    def parse_list(self, response):
+        product_urls = self.get_urls(response,
+                                 '//table[@class="table products"]//td/a[contains(@href, "products")]/@href',
+                                 self.start_url)
+        next_page_urls = self.get_urls(response,
+                                     '//a[contains(@href, "/intl/categories/1300?page")]/@href',
+                                     self.start_url)
+        for url in product_urls:
+            yield scrapy.Request(url, self.parse_product, meta={"type":"product"})
+        for url in next_page_urls:
+            yield scrapy.Request(url, self.parse_list)
+
+    def parse_product(self, response):
+        vendor_urls = self.get_urls(response,
+                      '//ul[@class="list-unstyled specs"]//li/span/a[contains(@title, "Visit vendor") and contains(@title, "profile")]/@href',
+                       self.start_url)
+        for url in vendor_urls:
+            yield scrapy.Request(url, self.parse_vendor, meta={"type": "vendor"})
+
+    def parse_vendor(self, response):
+        feedback_urls = self.get_urls(response,
+                                '//p[@class="all_feedbacks"]//a[contains(text(), "All feedback")]/@href',
+                                 self.start_url)
+        for url in feedback_urls:
+            yield scrapy.Request(url, self.parse_feedback, meta={"type": "feedback"})
+
+    def parse_feedback(self, response):
+        feedback_urls = self.get_urls(response,
+                                      '//nav[@class="pagination"]/span[@class="page"]//a[contains(@href, "palautteet")]/@href',
+                                      self.start_url)
+        for url in feedback_urls:
+            yield scrapy.Request(url, self.parse_feedback, meta={"type": "feedback"})
+
+
+
+
 # class RedisCheatOnionCrawlSpider(RedisWideOnionCrawlSpider):
 #     name = 'onioncheat'
 #
