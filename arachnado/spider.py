@@ -430,9 +430,11 @@ from six.moves.urllib.parse import urljoin, urlparse
 
 class VespinSpider(ArachnadoSpider):
     """
-    Experimental spiders
+    Experimental spider
     """
     name = 'vespin'
+    site_hints = None
+    site_rules = None
 
     def __init__(self, *args, **kwargs):
         super(VespinSpider, self).__init__(*args, **kwargs)
@@ -442,79 +444,36 @@ class VespinSpider(ArachnadoSpider):
                          self.crawl_id, self.motor_job_id, self.domain)
         for url in self.start_urls:
             self.start_url = add_scheme_if_missing(url)
-            yield scrapy.Request(url, self.parse_list)
+            yield scrapy.Request(url, self.parse)
 
     def fix_url(self, url, base_url):
         return urljoin(base_url, url)
-        # return url.replace("./", base_url)
-        # return url
 
     def get_urls(self, sel, xpath, base_url):
         urls = sel.xpath(xpath).extract()
         return [self.fix_url(x, base_url) for x in urls]
 
-    def parse_list(self, response):
-        product_urls = self.get_urls(response,
-                                 '//table[@class="table products"]//td/a[contains(@href, "products")]/@href',
-                                 self.start_url)
-        next_page_urls = self.get_urls(response,
-                                     '//a[contains(@href, "/intl/categories/1300?page")]/@href',
-                                     self.start_url)
-        for url in product_urls:
-            yield scrapy.Request(url, self.parse_product, meta={"type":"product"})
-        for url in next_page_urls:
-            yield scrapy.Request(url, self.parse_list)
-
-    def parse_product(self, response):
-        vendor_urls = self.get_urls(response,
-                      '//ul[@class="list-unstyled specs"]//li/span/a[contains(@title, "Visit vendor") and contains(@title, "profile")]/@href',
-                       self.start_url)
-        for url in vendor_urls:
-            yield scrapy.Request(url, self.parse_vendor, meta={"type": "vendor"})
-
-    def parse_vendor(self, response):
-        feedback_urls = self.get_urls(response,
-                                '//p[@class="all_feedbacks"]//a[contains(text(), "All feedback")]/@href',
-                                 self.start_url)
-        for url in feedback_urls:
-            yield scrapy.Request(url, self.parse_feedback, meta={"type": "feedback"})
-
-    def parse_feedback(self, response):
-        feedback_urls = self.get_urls(response,
-                                      '//nav[@class="pagination"]/span[@class="page"]//a[contains(@href, "palautteet")]/@href',
-                                      self.start_url)
-        for url in feedback_urls:
-            yield scrapy.Request(url, self.parse_feedback, meta={"type": "feedback"})
-
-
-
-
-# class RedisCheatOnionCrawlSpider(RedisWideOnionCrawlSpider):
-#     name = 'onioncheat'
-#
-#     def start_requests(self):
-#         self.logger.info("Started job %s (mongo id=%s)", self.crawl_id, self.motor_job_id)
-#         req_urls = []
-#         if self.start_urls:
-#             req_urls.extend(self.start_urls)
-#         if self.file_feed:
-#             with open(self.file_feed, "r") as urls_file:
-#                 for url in urls_file:
-#                     req_urls.append(url)
-#         for url in req_urls:
-#             for req in self.create_request(url, self.parse):
-#                 yield req
-#         scheduler = Scheduler.from_settings(self.settings)
-#         scheduler.open(self)
-#         scheduler.stats = self.stats
-#         first_req = None
-#         for req in self.next_requests():
-#             if not first_req:
-#                 first_req = req
-#             else:
-#                 scheduler.enqueue_request(req)
-#         if first_req:
-#             yield first_req
+    def parse(self, response):
+        parsed_url = urlparse(response.url)
+        # dots are replaced for Mongo storage
+        url_domain = parsed_url.netloc.replace(".", "_")
+        rules_found = False
+        if self.site_hints:
+            site_hint = self.site_hints.get(url_domain, None)
+            if site_hint:
+                site_key = site_hint["key"]
+                site_start_type = site_hint["start_type"]
+                page_type = response.meta.get("type", site_start_type)
+                if self.site_rules:
+                    rules_found = True
+                    rules = self.site_rules.get(site_key, {}).get(page_type, {})
+                    for next_page_type, reqs in rules.items():
+                        for req in reqs:
+                            urls = self.get_urls(response, req, response.url)
+                            for url in urls:
+                                yield scrapy.Request(url, meta={"type": next_page_type})
+        if not rules_found:
+            pass
 
 
 

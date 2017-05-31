@@ -95,9 +95,9 @@ class RedisDupeFilter(BaseDupeFilter):
         seen = added == 0
         if self.stats:
             if seen:
-                stats_key_name = 'scheduler/dupefilter/seen'
+                stats_key_name = 'scheduler/dupefilter/dups'
             else:
-                stats_key_name = 'scheduler/dupefilter/unseen'
+                stats_key_name = 'scheduler/dupefilter/new'
             self.stats.inc_value(stats_key_name)
         return seen
 
