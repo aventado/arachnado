@@ -464,6 +464,7 @@ class VespinSpider(ArachnadoSpider):
                 site_key = site_hint["key"]
                 site_start_type = site_hint["start_type"]
                 page_type = response.meta.get("type", site_start_type)
+                response.meta["type"] = page_type
                 if self.site_rules:
                     rules_found = True
                     rules = self.site_rules.get(site_key, {}).get(page_type, {})
