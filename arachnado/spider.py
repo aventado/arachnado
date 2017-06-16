@@ -34,6 +34,7 @@ from arachnado.utils.mongo import motor_from_uri
 from scrapy import signals
 import uuid
 import pymongo
+from six.moves.urllib.parse import urljoin, urlparse
 
 
 class ArachnadoSpider(scrapy.Spider):
@@ -171,6 +172,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     stats = None
     validate_html = True
     allowed_statuses = [200, 301, 302, 303, 304, 307]
+    reset_depth_new_domain = True
 
     def __init__(self, *args, **kwargs):
         if not self.settings:
@@ -223,7 +225,8 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
                            cookies={},
                            add_args={},
                            add_meta={},
-                           priority=0
+                           priority=0,
+                           source_url=None
                            ):
         errback = self.process_error
         site_passwords = self.settings.get("SITE_PASSWORDS", {})
@@ -232,6 +235,10 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         parsed_url = urlparse(url)
         # dots are replaced for Mongo storage
         url_domain = parsed_url.netloc.replace(".", "_")
+        if self.reset_depth_new_domain and source_url:
+            source_domain = urlparse(source_url)
+            if source_domain != parsed_url.netloc:
+                meta["depth"] = 0
         if url_domain in site_passwords:
             meta['autologin_username'] = site_passwords[url_domain].get("username", "")
             meta['autologin_password'] = site_passwords[url_domain].get("password", "")
@@ -304,13 +311,19 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         if self.settings.getbool('PREFER_PAGINATION'):
             with _dont_increase_depth(response):
                 for url in self._pagination_urls(response):
-                    for req in self.create_request(url, self.parse, add_meta={'is_page': True}):
+                    for req in self.create_request(url,
+                                                   self.parse,
+                                                   add_meta={'is_page': True},
+                                                   source_url=response.url):
                         yield req
 
         for link in self.get_links(response):
             if link_looks_like_logout(link):
                 continue
-            for req in self.create_request(link.url.replace("\n", ""), self.parse, priority=req_priority):
+            for req in self.create_request(link.url.replace("\n", ""),
+                                           self.parse,
+                                           priority=req_priority,
+                                           source_url=response.url):
                 yield req
 
         if is_splash_resp:
@@ -425,10 +438,10 @@ class RedisWideOnionCrawlSpider4(RedisWideOnionCrawlSpider):
     name = 'widequeue4'
 
 
-from six.moves.urllib.parse import urljoin, urlparse
 
 
-class VespinSpider(ArachnadoSpider):
+
+class VespinSpider(RedisWideOnionCrawlSpider):
     """
     Experimental spider
     """
@@ -457,11 +470,15 @@ class VespinSpider(ArachnadoSpider):
         parsed_url = urlparse(response.url)
         # dots are replaced for Mongo storage
         url_domain = parsed_url.netloc.replace(".", "_")
+        # print(url_domain)
+        # print(self.site_hints.keys())
         rules_found = False
         if self.site_hints:
             site_hint = self.site_hints.get(url_domain, None)
+            # print(site_hint)
             if site_hint:
                 site_key = site_hint["key"]
+                # print(site_key)
                 site_start_type = site_hint["start_type"]
                 page_type = response.meta.get("type", site_start_type)
                 response.meta["type"] = page_type
@@ -472,9 +489,14 @@ class VespinSpider(ArachnadoSpider):
                         for req in reqs:
                             urls = self.get_urls(response, req, response.url)
                             for url in urls:
-                                yield scrapy.Request(url, meta={"type": next_page_type})
+                                for req in self.create_request(url,
+                                                               self.parse,
+                                                               add_meta={"type": next_page_type},
+                                                               source_url=response.url):
+                                    yield req
         if not rules_found:
-            pass
+            for res in super(VespinSpider, self).parse(response):
+                yield res
 
 
 

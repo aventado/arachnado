@@ -30,8 +30,11 @@ class DepthMiddleware(object):
     def process_spider_output(self, response, result, spider):
         def _filter(request):
             if isinstance(request, Request):
-                depth = response.meta['depth'] + 1
-                request.meta['depth'] = depth
+                if "depth" not in request.meta:
+                    depth = response.meta['depth'] + 1
+                    request.meta['depth'] = depth
+                else:
+                    depth = request.meta.get("depth", 0)
                 if 'splash' in request.meta:
                     url = request.meta.get("url", None)
                 else:
