@@ -173,6 +173,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     validate_html = True
     allowed_statuses = [200, 301, 302, 303, 304, 307]
     reset_depth_new_domain = True
+    keep_domain = False
 
     def __init__(self, *args, **kwargs):
         if not self.settings:
@@ -235,10 +236,17 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
         parsed_url = urlparse(url)
         # dots are replaced for Mongo storage
         url_domain = parsed_url.netloc.replace(".", "_")
-        if self.reset_depth_new_domain and source_url:
-            source_domain = urlparse(source_url)
-            if source_domain != parsed_url.netloc:
-                meta["depth"] = 0
+        url_ok = True
+        if source_url:
+            source_domain = urlparse(source_url).netloc
+            if self.keep_domain:
+                url_ok = source_domain == parsed_url.netloc
+            if self.reset_depth_new_domain and source_url:
+                if source_domain != parsed_url.netloc:
+                    meta["depth"] = 0
+        if not url_ok:
+            self.logger.debug('Url %s filtered out', url)
+            return
         if url_domain in site_passwords:
             meta['autologin_username'] = site_passwords[url_domain].get("username", "")
             meta['autologin_password'] = site_passwords[url_domain].get("password", "")
@@ -438,9 +446,6 @@ class RedisWideOnionCrawlSpider4(RedisWideOnionCrawlSpider):
     name = 'widequeue4'
 
 
-
-
-
 class VespinSpider(RedisWideOnionCrawlSpider):
     """
     Experimental spider
@@ -452,12 +457,12 @@ class VespinSpider(RedisWideOnionCrawlSpider):
     def __init__(self, *args, **kwargs):
         super(VespinSpider, self).__init__(*args, **kwargs)
 
-    def start_requests(self):
-        self.logger.info("Started job %s (mongo id=%s) for domain %s",
-                         self.crawl_id, self.motor_job_id, self.domain)
-        for url in self.start_urls:
-            self.start_url = add_scheme_if_missing(url)
-            yield scrapy.Request(url, self.parse)
+    # def start_requests(self):
+    #     self.logger.info("Started job %s (mongo id=%s) for domain %s",
+    #                      self.crawl_id, self.motor_job_id, self.domain)
+    #     for url in self.start_urls:
+    #         self.start_url = add_scheme_if_missing(url)
+    #         yield scrapy.Request(url, self.parse)
 
     def fix_url(self, url, base_url):
         return urljoin(base_url, url)
