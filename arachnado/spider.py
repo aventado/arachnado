@@ -171,7 +171,7 @@ class WideOnionCrawlSpider(CrawlWebsiteSpider):
     settings = None
     stats = None
     validate_html = True
-    allowed_statuses = [200, 301, 302, 303, 304, 307]
+    allowed_statuses = [200, 301, 302, 303, 304, 307, 500]
     reset_depth_new_domain = True
     keep_domain = False
 

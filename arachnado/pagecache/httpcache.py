@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 from email.utils import formatdate
 from twisted.internet import defer
 from twisted.internet.error import TimeoutError, DNSLookupError, \
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class HttpCacheMiddleware(object):
-
+    use_depth = False
+    depth_prob_start = 0
     DOWNLOAD_EXCEPTIONS = (defer.TimeoutError, TimeoutError, DNSLookupError,
                            ConnectionRefusedError, ConnectionDone, ConnectError,
                            ConnectionLost, TCPTimedOutError, ResponseFailed,
@@ -26,6 +28,8 @@ class HttpCacheMiddleware(object):
     def __init__(self, settings, stats):
         if not settings.getbool('HTTPCACHE_ENABLED'):
             raise NotConfigured
+        self.use_depth = settings.get('HTTPCACHE_DEPTH_PROB', False)
+        self.depth_prob_start = settings.get('HTTPCACHE_DEPTH_PROB_START', 0.05)
         self.policy = load_object(settings['HTTPCACHE_POLICY'])(settings)
         self.storage = load_object(settings['HTTPCACHE_STORAGE'])(settings)
         self.ignore_missing = settings.getbool('HTTPCACHE_IGNORE_MISSING')
@@ -39,6 +43,13 @@ class HttpCacheMiddleware(object):
         crawler.signals.connect(o.spider_opened, signal=signals.spider_opened)
         crawler.signals.connect(o.spider_closed, signal=signals.spider_closed)
         return o
+
+    def get_eps(self, depth):
+        eps = self.depth_prob_start + depth / 7
+        if eps > 1:
+            return 1.0
+        else:
+            return eps
 
     def spider_opened(self, spider):
         self.storage.open_spider(spider)
@@ -54,6 +65,18 @@ class HttpCacheMiddleware(object):
         if not self.policy.should_cache_request(request):
             request.meta['_dont_cache'] = True  # flag as uncacheable
             return
+        # probability decision to use cache
+        if self.use_depth:
+            depth = request.meta.get("depth", 0)
+            eps = self.get_eps(depth)
+            _r = np.random.rand()
+            # logger.warning("{}, {}, {}".format(depth, eps, _r))
+            if _r > eps:
+                # logger.warning("We will not use cache")
+                return
+            else:
+                pass
+                # logger.warning("We will use cache")
         # Look for cached response and check if expired
         cachedresponse = self.storage.retrieve_response(spider, request)
         if self.stats:
