@@ -72,9 +72,11 @@ class HttpCacheMiddleware(object):
             _r = np.random.rand()
             # logger.warning("{}, {}, {}".format(depth, eps, _r))
             if _r > eps:
+                self.stats.inc_value('httpcache/prob/skip', spider=spider)
                 # logger.warning("We will not use cache")
                 return
             else:
+                self.stats.inc_value('httpcache/prob/usage', spider=spider)
                 pass
                 # logger.warning("We will use cache")
         # Look for cached response and check if expired

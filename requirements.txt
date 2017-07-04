@@ -16,3 +16,4 @@ elasticsearch
 six
 boto
 w3lib>=1.17.0
+numpy
